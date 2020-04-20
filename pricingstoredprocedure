@@ -87,24 +87,9 @@ END IF;
 
 
 loop_while1:WHILE var_iter < var_len DO #While the iterator is less than the number of items in the input array
-#Determine Navigation Type
-IF par_forcenavigationtype IS NOT NULL THEN
-SET var_navigationtype = forcenavigationtype;
-ELSE
-
-SELECT Hierarchy1PositionID INTO var_positionidentifier FROM employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
-IF var_positionidentifier IS NULL THEN
-SELECT Hierarchy2PositionID INTO var_positionidentifier FROM employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
-END IF;
-
-SET var_navigationtype = (SELECT navigationtype FROM crm2019.`confighierarchy` WHERE positionid = var_positionidentifier);
-
-END IF;
 
 #return
-SELECT JSON_OBJECT("MemberId",MemberId,"EmployeeId",EmployeeId,"FirstName",FirstName,"LastName",LastName,"NameSuffix",NameSuffix,"BranchNumber",BranchNumber,
-"HireDate",HireDate,"EmailAddress",EmailAddress,"PositionLabel",PositionLabel,"isHierarchyPosition",isHierarchyPosition,"NavigationType",var_navigationtype) AS JsonData
- FROM crm2019.vw_employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
+
 
 
 END$$
