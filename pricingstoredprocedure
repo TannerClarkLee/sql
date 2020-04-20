@@ -1,0 +1,114 @@
+DELIMITER $$
+
+USE `pricing`$$
+
+DROP PROCEDURE IF EXISTS sp_priceengine$$
+
+CREATE DEFINER=`wcaprod`@`%` PROCEDURE sp_priceengine(par_json JSON)
+prochandler_priceengine:BEGIN
+
+/*
+
+ +--------------------------------------+
+ |  Documentation       |
+ +--------------------------------------+
+
+Parameters:
+
+LocationId
+	Description:  The locationid for the store that the pricing service is being called from
+	Type: Integer
+	Possible Values: NA
+	Required: Yes
+AccountId
+	Description: The accountid for the accountid being used to make the purchase
+	Type: Integer
+	PossibleValues: NA
+	Required: Yes
+ProductIds
+	Description: The productid for the product that is being priced
+	Type: Array of integer products
+	PossibleValues: NA
+	Required: Yes
+
+Examples:
+
+CALL sp_employeeidentity('{"LocationId":"13049","AccountId":"520","ProductIds":[942348,4994,342355]}')
+>>
+{
+	"Items": [{
+			"ProductId": 942348,
+			"Cost": 56.34,
+			"List": 63.43
+		},
+		{
+			"ProductId": 4994,
+			"Cost": 12.78,
+			"List": 23.88
+		},
+		{
+			"ProductId": 342355,
+			"Cost": 112.65,
+			"List": 132.56
+		}
+	]
+}
+
+
+*/
+
+#--------------------------------------------------------------------------------------------------------------
+# B E G I N
+#--------------------------------------------------------------------------------------------------------------
+DECLARE par_accountid INT(50);
+DECLARE par_locationid INT(50);
+DECLARE par_productid INT(50);
+
+DECLARE var_navigationtype VARCHAR(50);
+DECLARE var_positionidentifier INT(10);
+
+#--------------------------------------------------------------------------------------------------------------
+#INITIAL JSON EXTRACTION
+SET par_accountid = JSON_UNQUOTE(JSON_EXTRACT(par_json ,'$.AccountId'));
+SET par_locationid = JSON_UNQUOTE(JSON_EXTRACT(par_json ,'$.LocationId'));
+
+
+#Parameter Check
+IF par_accountid IS NULL THEN
+	SIGNAL SQLSTATE '45000'
+	SET MESSAGE_TEXT = "[DEVELOPER] Error. No AccountId included";
+	LEAVE prochandler_priceengine;
+END IF;
+IF par_memberid IS NULL THEN
+	SIGNAL SQLSTATE '45000'
+	SET MESSAGE_TEXT = "[DEVELOPER] Error. No LocationId included";
+	LEAVE prochandler_priceengine;
+END IF;
+
+
+loop_while1:WHILE var_iter < var_len DO #While the iterator is less than the number of items in the input array
+#Determine Navigation Type
+IF par_forcenavigationtype IS NOT NULL THEN
+SET var_navigationtype = forcenavigationtype;
+ELSE
+
+SELECT Hierarchy1PositionID INTO var_positionidentifier FROM employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
+IF var_positionidentifier IS NULL THEN
+SELECT Hierarchy2PositionID INTO var_positionidentifier FROM employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
+END IF;
+
+SET var_navigationtype = (SELECT navigationtype FROM crm2019.`confighierarchy` WHERE positionid = var_positionidentifier);
+
+END IF;
+
+#return
+SELECT JSON_OBJECT("MemberId",MemberId,"EmployeeId",EmployeeId,"FirstName",FirstName,"LastName",LastName,"NameSuffix",NameSuffix,"BranchNumber",BranchNumber,
+"HireDate",HireDate,"EmailAddress",EmailAddress,"PositionLabel",PositionLabel,"isHierarchyPosition",isHierarchyPosition,"NavigationType",var_navigationtype) AS JsonData
+ FROM crm2019.vw_employee WHERE employeeid = par_employeeid AND memberid = par_memberid;
+
+
+END$$
+
+
+
+DELIMITER ;
