@@ -31,7 +31,7 @@ ProductIds
 	PossibleValues: NA
 	Required: Yes
 
-Examples:
+Example:
 
 CALL sp_employeeidentity('{"LocationId":"13049","AccountId":"520","ProductIds":[942348,4994,342355]}')
 >>
@@ -62,16 +62,27 @@ CALL sp_employeeidentity('{"LocationId":"13049","AccountId":"520","ProductIds":[
 #--------------------------------------------------------------------------------------------------------------
 DECLARE par_accountid INT(50);
 DECLARE par_locationid INT(50);
-DECLARE par_productid INT(50);
 
 DECLARE var_navigationtype VARCHAR(50);
 DECLARE var_positionidentifier INT(10);
+
+DECLARE var_iter INT(20);
+DECLARE var_exit_while INT(20);
+DECLARE var_len INT(20);
+
+SET var_iter = 0;
+SET var_exit_while = 0;
+
+#outputtable
+DROP TEMPORARY TABLE IF EXISTS tboutput;
+CREATE TEMPORARY TABLE tboutput (json_entry JSON);
+
 
 #--------------------------------------------------------------------------------------------------------------
 #INITIAL JSON EXTRACTION
 SET par_accountid = JSON_UNQUOTE(JSON_EXTRACT(par_json ,'$.AccountId'));
 SET par_locationid = JSON_UNQUOTE(JSON_EXTRACT(par_json ,'$.LocationId'));
-
+SET var_len = (SELECT JSON_LENGTH(JSON_EXTRACT(par_json, '$.ProductIds')));
 
 #Parameter Check
 IF par_accountid IS NULL THEN
@@ -87,13 +98,50 @@ END IF;
 
 
 loop_while1:WHILE var_iter < var_len DO #While the iterator is less than the number of items in the input array
+	SET var_exit_while = var_exit_while + 1;
+	IF var_exit_while > 10000 THEN
+		SIGNAL SQLSTATE '45000'
+		SET MESSAGE_TEXT = "[DEVELOPER] Error. Exceeded Number of Price Lookups (>10000)";
+		LEAVE prochandler_priceengine;
+	END IF;
 
-#return
+	SET @varcost = NULL;
+	SET @varlist = NULL;
+	SET @productid = NULL;
+
+	#Get productid from jsonarray
+	SET @st = CONCAT("SET @productid = JSON_UNQUOTE(JSON_EXTRACT('",par_json,"','$.ProductIds[",var_iter,"]'))");
+	PREPARE stmt FROM @st;
+	EXECUTE stmt;
+
+	#Start Pricing Function
+	SET @promo = NULL;
+	SET @pricelevel = NULL;
+
+	#pricelevel
+	SELECT pricelevel into @pricelevel from pricing.pricelevel WHERE accountid = @accountid;
+
+	IF @pricelevel IS NULL THEN
+		SET @pricelevel = 8;
+	END IF;
+
+	SELECT promoprice, list INTO @promo,@list FROM pricing.promoprice WHERE productid = @productid AND StartDate>=NOW() and EndDate<NOW();
+
+	IF @promo IS NULL THEN
+		SELECT Cost,List into @cost,@list FROM pricing.productpricing WHERE productid = @productid and PriceLevel = @pricelevel;
+	ELSE
+		SET @cost = @promo;
+	END IF;
 
 
+	INSERT INTO tboutput
+	SELECT JSON_OBJECT("ProductId",@productid,"Cost",@cost,"List",@list);
+
+	SET var_iter = var_iter + 1; #increase iterator
+END WHILE;
+
+SELECT JSON_PRETTY(JSON_OBJECT("Items",JSON_ARRAYAGG(json_entry))) as body FROM tboutput;
 
 END$$
-
-
 
 DELIMITER ;
